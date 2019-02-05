@@ -1,0 +1,547 @@
+%\documentclass[article]{jss}
+%\documentclass[article,shortnames]{jss}
+\documentclass[article,shortnames,nojss]{jss}
+\usepackage{bm}
+\usepackage{amssymb}% http://ctan.org/pkg/amssymb
+\usepackage{pifont}% http://ctan.org/pkg/pifont
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\xmark}{\ding{55}}%
+\usepackage{dcolumn}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% declarations for jss.cls %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% almost as usual
+\author{Alan Fernihough\\ Queen's University Belfast}
+\title{Marginal Effects for Generalized Linear Models: The \pkg{mfx} Package for \proglang{R}}
+
+%% for pretty printing and a nice hypersummary also set:
+\Plainauthor{Alan Fernihough} %% comma-separated
+\Plaintitle{Marginal Effects for Generalized Linear Models: The \pkg{mfx} Package for R} %% without formatting
+\Shorttitle{\pkg{mfx}: Marginal Effects for Generalized Linear Models} %% a short title (if necessary)
+
+%% an abstract and keywords
+\Abstract{
+  \pkg{mfx} is an \proglang{R} package which provides functions that estimate a number of popular generalized linear models, returning marginal effects as output. This paper briefly describes the method used to compute these marginal effects and their associated standard errors, and demonstrates how this is implemented with \pkg{mfx} in \proglang{R}. I also illustrate how the package extends to incorporate the calculation of odds and incidence rate ratios for certain generalized linear models. Finally, I present an example showing how the output produced via \pkg{mfx} can be translated into {\LaTeX}.
+}
+\Keywords{Marginal effects, odds ratio, incidence rate ratio, generalized linear models, \proglang{R}, \pkg{mfx}}
+\Plainkeywords{marginal effects, odds ratio, incidence rate ratio, generalized linear models, R} %% without formatting
+%% at least one keyword must be supplied
+
+%% publication information
+%% NOTE: Typically, this can be left commented and will be filled out by the technical editor
+%% \Volume{50}
+%% \Issue{9}
+%% \Month{June}
+%% \Year{2012}
+%% \Submitdate{2012-06-04}
+%% \Acceptdate{2012-06-04}
+
+%% The address of (at least) one author should be given
+%% in the following format:
+\Address{
+  Alan Fernihough\\
+Queen's University Management School\\
+Queen's University Belfast\\
+185 Stranmillis Road\\
+Belfast \\
+BT9 5EE, United Kingdom\\
+E-mail: \email{alan.fernihough@gmail.com}%\\
+%  URL: \url{http://eeecon.uibk.ac.at/~zeileis/}
+}
+%% It is also possible to add a telephone and fax number
+%% before the e-mail in the following format:
+%% Telephone: +43/512/507-7103
+%% Fax: +43/512/507-2851
+
+%% for those who use Sweave please include the following line (with % symbols):
+%% need no \usepackage{Sweave.sty}
+
+%% end of declarations %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\begin{document}
+
+%% include your article here, just as usual
+%% Note that you should use the \pkg{}, \proglang{} and \code{} commands.
+
+\section[Introduction]{Introduction}
+%% Note: If there is markup in \(sub)section, then it has to be escape as above.
+The Generalized Linear Model (GLM) is a modified version of the classic linear regression model typically estimated via Ordinary Least Squares (OLS).\footnote{\citet{mccneld89} provide a complete overview of the GLM.} Researchers will generally use a GLM approach when the response variable being modeled does not have a normally distributed error term. Since the absence of a normally distributed error term violates the Gauss-Markov assumptions, the use of a GLM is preferable in many scenarios.\footnote{Since the error term is non-normal this induces heteroskedasticity.} The GLM works by permitting the regressors to be related to the response variable by means of a link function. For example, in cases where the response variable is binary (takes a value of either zero or one), the probit or logit link functions are commonly used because these functions bound the predicted response between zero and one. 
+
+One drawback associated with the GLM is that the estimated model coefficients cannot be directly interpreted as marginal effects (i.e., the change in the response variable predicted after a one unit change in one of the regressors), like in an OLS regression. The estimated coefficients are multiplicative effects, dependent on both the link function chosen for the GLM and other variables alongside their estimated coefficient values. Therefore, it is difficult for one to judge the magnitude of a GLM regression based on the estimated coefficient values. 
+
+The open-source \proglang{R} offers a number of functions that facilitate GLM estimation. Furthermore, two \proglang{R} packages are available that contain functions providing platform from which users can interpret an estimated GLM. The package \pkg{effects} \citep{effects}, described in \citet{Fox2003}, contains a comprehensive array of functions that allow users to graphically illustrate a GLM in effect plots. While effect plots are arguably a better representation of the results, these plots may become unwieldy for researchers trying to display the effects for a large number of variables and/or multiple model specifications. In such cases, a table of marginal effect results may offer a more concise method of displaying results. The \pkg{erer} \citep{erer} package allows users to calculate marginal effects for either a binary logit or probit model.
+
+While the packages \pkg{effects} and \pkg{erer} host a number of functions aiding the interpretation of the GLM, the package described in this article, \pkg{mfx} \citep{mfx}, contains important additional features that are useful in empirical research. First, \pkg{mfx} both estimates the GLM and calculates the associated marginal effects in one function. Second, \pkg{mfx} can estimate adjusted standard errors, robust to either heteroskedasticity or clustering. Third, \pkg{mfx} provides the user with the ability to estimate marginal effects for a variety of GLM specifications, namely: binary logit, binary probit, count Poisson, count negative binomial, and beta distributed responses. Fourth, since odds ratios or incidence rate ratios are more commonly used in certain academic disciplines, like epidemiology, \pkg{mfx} also contains functions that return these values instead of marginal effects. Fifth, \pkg{mfx} allows the user to decide if they want to compute either the marginal effects for the average individual in the sample or the ``average partial effects'' as advocated in \citet{woolridge}. Finally, the output produced in \pkg{mfx} can easily be accommodated using the \pkg{texreg} \citep{texreg}, so that publication quality {\LaTeX} tables can be generated with relative simplicity. 
+
+The paper proceeds as follows. Section 2 contains a brief overview on the methods by which marginal effects are computed. Section 3 outlines details of the software. Section 4 offers a worked example that demonstrates how to use the software in practice and how the output can be used to generate publication standard {\LaTeX} tables. Finally, Section 5 summarizes the main contributions of the paper,  highlights a number of the package's drawbacks, and offers possible areas for future development. 
+
+\section[Marginal effects]{Marginal effects}
+
+Let $\E(y_{i}|\bm{x}_{i})$ represent the expected value of a dependent variable $y_i$ given a vector of explanatory variables $\bm{x}_i$, for an observation unit $i$. In the case where $\bm{y}$ is a linear function of $(x_{1}, \cdots, x_j) = \bm{X}$ and $\bm{y}$ is a continuous variable, the following model with $k$ regressors can be estimated via OLS:
+\begin{equation}
+\label{eq:eq1}
+\bm{y} = \bm{X}\bm{\beta} + \bm{\epsilon},
+\end{equation}
+where $\bm{\epsilon}$ represents the error term, or 
+\begin{equation}
+\label{eq:eq2}
+y_{i} = \beta_{0} + \beta_{1} x_{1i} + \cdots  + \beta_{j} x_{ki} + \epsilon_{i},
+\end{equation}
+so the additive vector of predicted coefficients can be obtained from the usual
+computation: $\bm{\hat{\beta}} = \bm{(X^\top X)^{-1}X^\top y}$. From (1) and (2) it is straightforward to see that the marginal effect of the variable $\bm{x}_{j}$, where $j \in \{1, \cdots, k\}$ on the dependent variable is: $\partial \bm{y} / \partial \bm{x}_j = \beta_{j}$. In other words, a unit increase in the variable $\bm{x}_j$ increases the variable $\bm{y}$ by $\beta_{j}$ units.
+
+A GLM takes the following form:
+\begin{equation}
+\label{eq:eq3}
+g(\bm{y}) = \bm{X}\bm{\beta},% + \bm{\epsilon}
+\end{equation}
+where the link function $g(\cdot)$ transforms the expectation of the response to a linear equation. The function $g(\cdot)$ is invertible, and thus we can rewrite Equation~\ref{eq:eq3}:
+\begin{equation}
+\label{eq:eq4}
+\bm{y} = g^{-1}(\bm{X}\bm{\beta}),% + \bm{\epsilon}
+\end{equation}
+so the inverse link function, also known as the mean function, is applied to the product of the regressors ($\bm{X}$) and the model coefficients ($\bm{\beta}$). Therefore, the GLM in Equation~\ref{eq:eq4} can be seen as the linear regression model nested within a nonlinear transformation. The choice of $g(\cdot)$ should depend on the distribution of the response $\bm{y}$.
+
+Since the GLM typically implies that the linear model inside a nonlinear function, one cannot directly infer the marginal effects from the estimated coefficients.\footnote{In the case where $g(\cdot)$ is the identity function, the estimated GLM will be identical to the standard linear regression model.} Alternatively, based on Equation~\ref{eq:eq4}, we can see that:
+\begin{equation}
+\label{eq:eq5}
+\frac{\partial \bm{y}}{\partial \bm{x}_j} = \beta_{j} \times \frac{\partial g^{-1}(\bm{X}\bm{\beta}) } {\partial \bm{x}_j }.
+\end{equation}
+Thus, the nonlinearity in the link function means that the marginal effect of $\bm{x}_{j}$ now depends on the derivative of the inverse link function, and contained within this function are all of the other regressors and their associated regression coefficient values.
+
+Here we use the probit model as an example, although the calculations for other GLM approaches is similar. The link function for the probit is based on the inverse normal distribution, so:
+\begin{equation}
+\label{eq:eq6}
+%\textrm{Prob}(\bm{y} = 1 | \bm{x}) = \int_{-\infty}^{\bm{X}\beta} \phi (t) dt = \Phi(\bm{X}\bm{\beta})
+\Prob(\bm{y} = 1 | \bm{x}) = \int_{-\infty}^{\bm{X}\beta} \phi (z) dz = \Phi(\bm{X}\bm{\beta}),
+\end{equation}
+where $\Phi(\cdot)$ and $\phi(\cdot)$ denote both the normal cumulative and probability density functions respectively. The marginal effect for a continuous variable in a probit model is:
+\begin{equation}
+\label{eq:eq7}
+\frac{\partial \bm{y}}{\partial \bm{x_j}} = \hat{\beta}_{j} \times \phi(\bm{X}\bm{\hat{\beta}}) 
+\end{equation}
+since $\Phi'(\cdot)= \phi(\cdot)$, so the marginal effect for a continuous variable $\bm{x}_j$ depends on all of the estimated $\hat{\bm{\beta}}$ coefficients, which are fixed, and the complete design matrix $\bm{X}$, the values for which are variable. Because the values for $\bm{X}$ vary, the marginal effects depend on the procedure one employs. The literature offers two common approaches \citep{KleiberZeileis}. The first, and simplest, calculates the marginal effects when each variable in the design matrix is at its average value. Otherwise known as the partial effects for the average individual \citep{Greene}, they can be calculated as: 
+\begin{equation}
+\label{eq:eq8}
+\frac{\partial\bm{y}}{\partial \bm{x_j}} = \hat{\beta}_{j} \times\phi(\bm{\bar{X}}\bm{\hat{\beta}}).
+\end{equation}
+The alternative approach calculates the average partial effects \citep{woolridge} or average of the sample marginal effects \citep{KleiberZeileis}, by calculating a partial effect for each observation unit (where there are $n$ observations) and then averaging: 
+\begin{equation}
+\label{eq:eq9}
+\frac{\partial \bm{y}}{\partial \bm{x_j}} =  \hat{\beta}_{j} \times \frac{\sum^{n}_{i=1}\phi(\bm{X}_{i}\bm{\hat{\beta}})}{n}. 
+\end{equation}
+Usually, the choice over which method one uses is unimportant as the difference in values returned by both methods is likely to be small \citep{Greene}. 
+
+The partial effects calculation in Equation~\ref{eq:eq5} is not applicable in cases where $\bm{x}_{j}$ is a binary/dummy variable like gender. This is because the derivative in Equation~\ref{eq:eq5} is with respect to a infinitesimally small change in $\bm{x}_j$ not the binary change from zero to one. Fortunately, calculating the marginal effects in such instances is very straightforward. In the probit model where the $j$-th regressor is a dummy variable the partial effect for the average individual is simply: 
+\begin{equation}
+\label{eq:eq10}
+\frac{\Delta \bm{y}}{\Delta \bm{x}_{j}}  = \Phi(\bm{\bar{X}}^{-j}\bm{\hat{\beta}}^{-j} + \hat{\beta}_{j}) - \Phi(\bm{\bar{X}}^{-j}\bm{\hat{\beta}}^{-j}),
+\end{equation}
+where $\bm{\bar{X}}^{-j}$ is a vector of the average values of the design matrix $\bm{X}$ that excludes the $j$-th variable. The corresponding sample marginal effect is:
+\begin{equation}
+\label{eq:eq11}
+\frac{\Delta \bm{y}}{\Delta \bm{x}_{j}}  = \frac{\sum^{n}_{i=1} \Phi(\bm{X}^{-j}_{i}\bm{\hat{\beta}}^{-j}_{i} + \hat{\beta}_{j}) - \Phi(\bm{X}^{-j}\bm{\hat{\beta}}^{-j})}{n}.
+\end{equation}
+All functions in \pkg{mfx} automatically detect dummy regressors and perform the calculation in either Equation~\ref{eq:eq10} or Equation~\ref{eq:eq11}, depending on the type of marginal effect the user wants. 
+
+We have already seen that the marginal effect for the $j$-th regressor in a probit GLM, $\hat{\beta}_{j} \times \phi (\bm{X}\bm{\hat{\beta}})$, is a nonlinear function of $\bm{\hat{\beta}}$. Therefore, the standard errors that correspond to these marginal effects must be calculated via the delta method of finding approximations based on Taylor series expansions to the variance of functions of random variables:
+\begin{equation}
+\label{eq:eq12}
+%Var[f(\bm{X\beta})] = \frac{\partial f(\bm{X\beta})}{\partial \bm{\beta}} Var[\bm{\beta}] \frac{\partial f(\bm{X\beta})}{\partial \bm{\beta}}
+\VAR[f(\bm{X\hat{\beta}})] = \left[{\frac{\partial f(\bm{X\hat{\beta}})}{\partial \bm{\hat{\beta}}}} \right]^\top \VAR[\bm{\hat{\beta}}] \left[{\frac{\partial f(\bm{X\hat{\beta}})}{\partial \bm{\hat{\beta}}}} \right],
+\end{equation}
+where $f$ is the nonlinear transformation and $\VAR[\bm{\hat{\beta}}]$ is the usual variance-covariance of the estimated parameters. With respect to the probit model previously used the variance of the marginal effects (for the average individual) is:
+\begin{equation}
+\label{eq:eq13}
+\VAR[\bm{\hat{\beta}} \times \phi(\bm{\bar{X}\hat{\beta}})] = \left[{\frac{\partial[ \bm{\hat{\beta}} \times \phi(\bm{\bar{X}\hat{\beta}})]}{\partial \bm{\hat{\beta}}}} \right]^\top \VAR[\bm{\hat{\beta}}] \left[{\frac{\partial[ \bm{\beta} \times \phi(\bm{\bar{X}\hat{\beta}})]}{\partial \bm{\hat{\beta}}}} \right],
+\end{equation}
+and since 
+\begin{equation}
+\label{eq:eq14}
+\frac{\partial[ \bm{\hat{\beta}} \times \phi(\bm{\bar{X}\hat{\beta}})]}{\partial \bm{\hat{\beta}}} = \phi (\bm{\bar{X}\hat{\beta}}) \times[\bm{I_{k}} - \bm{\bar{X}\hat{\beta}} \times (\bm{\hat{\beta}\bar{X}})],
+\end{equation}
+the probit marginal effect standard errors will be derived from the diagonal elements of the following matrix of derivatives:
+\begin{equation}
+\label{eq:eq15}
+\VAR[\bm{\hat{\beta}} \times \phi(\bm{\bar{X}\hat{\beta}})] = [\phi (\bm{\bar{X}\hat{\beta}})]^2 \times [\bm{I_{k}} - \bm{\bar{X}\hat{\beta}}\times(\bm{\hat{\beta}\bar{X}})] [\VAR[\bm{\hat{\beta}}]] [\bm{I_{k}} - \bm{X\hat{\beta}} \times (\bm{\hat{\beta}\bar{X}})]
+\end{equation}
+for continuous regressors, and:
+\begin{equation}
+\label{eq:eq16}
+\VAR \left[{\frac{\Delta \bm{y}}{\Delta \bm{x}_{j}}}\right] = \phi(\bm{\bar{X}}^{-j}\bm{\hat{\beta}}^{-j} + \hat{\beta}_{j}) \times \VAR[\hat{\beta}_{j}] \times \phi(\bm{\bar{X}}^{-j}\bm{\hat{\beta}}^{-j} + \hat{\beta}_{j}) 
+\end{equation}
+for the $j$-th discrete regressor, when the user is calculating marginal effects for the average individual.\footnote{The average of the sample marginal effects is analogous.} 
+
+There are several instances where it might be important to adjust the marginal effect standard errors for either heteroskedasticity or clustering. For example, an over-dispersed Poisson regression will underestimate the usual standard errors. Therefore, one could apply a \citet{white} correction to the estimated variance-covariance matrix to account for this heteroskedasticity.\footnote{The presence of heteroskedasticity in models with a binary response is best handled explicitly using \pkg{glmx} \citep{glmx}.} Another example applies in cases where the researcher is estimating models with clustered data. Ignoring the clustered nature of certain data will lead to an underestimate of the standard errors. The \pkg{mfx} package allows the user to correct for clustering using either a one-way or two-way correction in the variance-covariance matrix \citep{Cameron} using the functionality offered in the \pkg{sandwich} package \citep{sandwhich1, sandwhich2}.
+
+Typically economists use marginal effects to display the output after estimating a GLM. However, other disciplines, particularly the medical sciences, use odds ratios (for example, in a logistic regression) or incidence rate ratios (for count regression models). Both ratios are derived from the fact that the underlining GLM is a log-linear model, so taking the exponent of the coefficient results in a multiplicative effect. Odds ratios are defined as the ratio of the probability of success and the probability of failure and therefore range between zero and infinity. Thus, an explanatory variable in a logistic regression with an odds ratio of 2 indicates that a one unit change in the explanatory variable increases the odds of the event by 2 to 1. Alternatively, an odds ratio of 1 would indicate that the regressor of interest does not influence the response. The incidence rate ratios used in Poisson and negative binomial count regression models are analogous to the aforementioned odds ratios. Once again they are multiplicative effects. For example, an incidence rate ratio of two will indicate that a one unit increase in the explanatory variable of interest doubles the underlying rate by which the count event is occurring. The \pkg{mfx} package accommodates odds ratios and incidence rate ratios in the applicable log-linear models.
+
+\section[Package details]{Package details}
+
+The \pkg{mfx} software is an add-on package to the statistical software \proglang{R}, and is freely available from the Comprehensive \proglang{R} Archive Network (CRAN, \url{http:
+//CRAN.R-project.org/package=mfx}). In addition to the base implementation of
+\proglang{R}, it requires the following packages: \pkg{MASS} \citep{mass}, \pkg{sandwich} \citep{sandwhich1, sandwhich2}, \pkg{lmtest} \citep{lmtest}, and \pkg{betareg} \citep{beta1, beta2}. Once \proglang{R} and the required packages have been installed, \pkg{mfx} can be loaded using the following code.
+\begin{CodeChunk}
+\begin{CodeInput}
+R> library("mfx")
+\end{CodeInput}
+\end{CodeChunk}
+
+Table \ref{table:one} summarizes the GLM approaches that are compatible with the functions provided in \pkg{mfx}. The functions in \pkg{mfx} will first estimate the specified GLM, and after the GLM is fitted, the marginal effects (or odds/incidence rate ratios). These functions all return the requested output in the familiar coefficient table summary.
+  
+% Table generated by Excel2LaTeX from sheet 'Sheet1'
+\begin{table}[htbp]
+  \centering
+    \begin{tabular}{|lllccc|}
+ %   \toprule
+\hline
+    \textbf{Regression} & \textbf{Response} & \textbf{Response} & \textbf{Marginal} & \textbf{Odds} & \textbf{Incidence} \\
+    \textbf{Model} & \textbf{Type} & \textbf{Range} & \textbf{Effects} & \textbf{Ratios} & \textbf{Rate Ratios} \\
+\hline
+%    \midrule
+    Probit & Binary & \{0, 1\} & \cmark     & \xmark    & \xmark \\
+    Logit & Binary & \{0, 1\} & \cmark     & \cmark     & \xmark \\
+    Poisson & Count & [0, $+\infty$) & \cmark     & \xmark     & \cmark \\
+    Negative Binomial & Count & [0, $+\infty$) & \cmark     & \xmark     & \cmark \\
+    Beta  & Rate & (0, 1) & \cmark     & \cmark     & \xmark \\
+%    \bottomrule
+\hline
+    \end{tabular}%
+  \caption{GLM approaches available in \pkg{mfx}.}
+  \label{table:one}%
+\end{table}%
+
+First, we look at the function that estimates a probit model, and returns its marginal effects as an output. The \code{probitmfx} function and it's arguments are shown below.
+\begin{CodeChunk}
+\begin{CodeInput}
+probitmfx(formula, data, atmean = TRUE, robust = FALSE, clustervar1 = NULL, 
+	  clustervar2 = NULL, start = NULL, control = list())
+\end{CodeInput}
+\end{CodeChunk}
+The function is similar to either the \code{lm} or \code{glm} functions. The first argument: \code{formula} requires an object suitable for the formula class in \proglang{R}. The \code{formula} argument is identical to that required when estimating a probit model via the \code{glm} function, and is required by \code{probitmfx}. The next argument, \code{data} is for a data frame object. This argument is necessary so users should group their data into a data frame object prior to use. When \code{atmean = TRUE}, the resulting marginal effects will be for the average observation---as in Equation~\ref{eq:eq8} and Equation~\ref{eq:eq10}---while if \code{atmean = FALSE}, the average of the sample marginal effects will be calculated---as in Equation~\ref{eq:eq9} and Equation~\ref{eq:eq11}. In general, average of the sample marginal effects will take longer to be calculated. The \code{robust} argument allows the users to apply White's correction for the presence of heteroskedasticity in the calculation of marginal effect standard errors. Both of the \code{clustervar1} and \code{clustervar2} arguments are reserved for the names of the variables on which the user wishes to calculate either one or two-way clustered standard errors. These cluster names must correspond to a variable contained within the \code{data} object. The \code{start} and \code{control} arguments relate to identical arguments used to fit a model with \code{glm}.
+
+Let's take a look at the output produced by \code{probitmfx} with a simple simulated example. 
+\begin{CodeChunk}
+\begin{CodeInput}
+R> set.seed(12345)
+R> n = 1000
+R> x = rnorm(n)
+R> y = ifelse(pnorm(1 + 0.5 * x + rnorm(n)) > 0.5, 1, 0)
+R> data = data.frame(y, x)
+R> (mod1 = probitmfx(formula = y ~ x, data = data))
+\end{CodeInput}
+\begin{CodeOutput}
+Call:
+probitmfx(formula = y ~ x, data = data)
+
+Marginal Effects:
+     dF/dx Std. Err.      z     P>|z|    
+x 0.121643  0.012165 9.9997 < 2.2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+\end{CodeOutput}
+\begin{CodeInput}
+R> names(mod1)
+\end{CodeInput}
+\begin{CodeOutput}
+[1] "mfxest" "fit"    "dcvar"  "call"  
+\end{CodeOutput}
+\begin{CodeInput}
+R> mod1$mfxest
+\end{CodeInput}
+\begin{CodeOutput}
+      dF/dx Std. Err.        z        P>|z|
+x 0.1216429 0.0121646 9.999745 1.527906e-23
+\end{CodeOutput}
+\begin{CodeInput}
+R> mod1$fit
+\end{CodeInput}
+\begin{CodeOutput}
+Call:  glm(formula = formula, family = binomial(link = "probit"), data = data, 
+    start = start, control = control, x = T)
+
+Coefficients:
+(Intercept)            x  
+     0.9911       0.5102  
+
+Degrees of Freedom: 999 Total (i.e. Null);  998 Residual
+Null Deviance:	    951.8 
+Residual Deviance: 848.8 	AIC: 852.8
+\end{CodeOutput}
+\begin{CodeInput}
+R> mod1$dcvar
+\end{CodeInput}
+\begin{CodeOutput}
+character(0)
+\end{CodeOutput}
+\begin{CodeInput}
+R> mod1$call
+\end{CodeInput}
+\begin{CodeOutput}
+probitmfx(formula = y ~ x, data = data)
+\end{CodeOutput}
+\end{CodeChunk}
+Calling the \code{probitmfx} object returns a \code{printCoefmat} object similar to that produced when \code{summary(glm(...))} is used for a GLM. However, instead of the model coefficients, the \code{probitmfx} produces the marginal effects: \code{dF/dx}. The \code{probitmfx} object contains four objects. The first, \code{mfxest}, is a table of the marginal effects, their standard errors, a $z$-test statistic (testing if the marginal effect is equal to zero) and the corresponding $p$-value associated with the $z$-test representing a two-tailed test. The name \code{fit} refers to the stored \code{glm} object---in this case a probit model. Note that using \code{summary(probitmfx$fit)} reports uncorrected standard errors, not ones that have been adjusted using the \code{robust}, \code{clustervar1}, and \code{clustervar2} arguments in \code{probitmfx}. A notifier that signifies for which variables a discrete change marginal effects is captured with \code{dcvar}. Finally, \code{call} is the matched call object.
+
+The \pkg{mfx} package also contains the following other functions: \code{betamfx}, \code{betaor}, \code{logitmfx}, \code{logitor}, \code{negbinirr}, \code{negbinmfx}, \code{poissonirr}, \code{poissonmfx}. Each of these functions is self explanatory, with \code{mfx}, \code{or}, or \code{irr} indicating marginal effects, odds ratios, or incidence rate ratios respectively. The logit and Poisson models are fit with the \code{glm} function available as a base package in \proglang{R}. The negative binomial is fit using the \code{glm.nb} function in \pkg{MASS}. Finally, the beta regression is fit via the \pkg{betareg} package. Both \code{betamfx} and \code{betaor} functions use a logit link for the mean function, so it is feasible to calculate both marginal effects and odds ratios for these models. 
+
+\section[Example analysis]{Example analysis}
+
+This section illustrates how a simple analysis can be performed in \pkg{mfx}. For this analysis, I use the Swiss labor market participation data \code{SwissLabor} that is included in the \pkg{AER} \citep{KleiberZeileis} package. The code below, clears the workspace and loads the relevant data frame.
+\begin{CodeChunk}
+\begin{CodeInput}
+R> rm(list = ls())
+R> library("AER")
+Loading required package: car
+Loading required package: lmtest
+Loading required package: zoo
+
+Attaching package: 'zoo'
+
+The following objects are masked from 'package:base':
+
+    as.Date, as.Date.numeric
+
+Loading required package: sandwich
+Loading required package: survival
+Loading required package: splines
+R> data("SwissLabor")
+R> head(SwissLabor)
+  participation   income age education youngkids oldkids foreign
+1            no 10.78750 3.0         8         1       1      no
+2           yes 10.52425 4.5         8         0       1      no
+3            no 10.96858 4.6         9         0       0      no
+4            no 11.10500 3.1        11         2       0      no
+5            no 11.10847 4.4        12         0       2      no
+6           yes 11.02825 4.2        12         0       1      no
+\end{CodeInput}
+\end{CodeChunk}
+
+For this example, we want to model labor force participation as a function of covariates. In the next step we load the \pkg{mfx} and estimate the baseline probit model returning the marginal effects as an output.
+\begin{CodeChunk}
+\begin{CodeInput}
+R> library("mfx")
+Loading required package: MASS
+Loading required package: betareg
+Loading required package: Formula
+R> (mod1 = probitmfx(participation ~ income + age + education +
++                    youngkids + oldkids + foreign, 
++                   data = SwissLabor))
+Call:
+probitmfx(formula = participation ~ income + age + education + 
+    youngkids + oldkids + foreign, data = SwissLabor)
+
+Marginal Effects:
+                dF/dx  Std. Err.       z     P>|z|    
+income     -0.1992314  0.0485655 -4.1023 4.090e-05 ***
+age        -0.1232260  0.0214953 -5.7327 9.885e-09 ***
+education   0.0080889  0.0069485  1.1641    0.2444    
+youngkids  -0.3110035  0.0409640 -7.5921 3.147e-14 ***
+oldkids    -0.0053438  0.0177937 -0.3003    0.7639    
+foreignyes  0.3112408  0.0429215  7.2514 4.125e-13 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+dF/dx is for discrete change for the following variables:
+
+[1] "foreignyes"
+\end{CodeInput}
+\end{CodeChunk}
+Creates a \code{probitmfx} object called \code{mod1}. The printed object shows the function call, a table of the marginal effects, and a notification that the \code{foreign} variable represents a discrete change and the marginal effects for this variable have been calculated accordingly. The marginal effect values appear sensible. For example, a one-unit change in the number of young children associated with an observation reduces the probability of labor force participation by $\approx$ 31\%. We must keep in mind that these marginal effects refer to the average individual. However, we can calculate the average of the sample marginal effects.
+\begin{CodeChunk}
+\begin{CodeInput}
+R> (mod2 = probitmfx(participation ~ income + age + education +
++                     youngkids + oldkids + foreign, 
++                   data = SwissLabor, atmean = FALSE))
+Call:
+probitmfx(formula = participation ~ income + age + education + 
+    youngkids + oldkids + foreign, data = SwissLabor, atmean = FALSE)
+
+Marginal Effects:
+                dF/dx  Std. Err.       z     P>|z|    
+income     -0.1729131  0.0409901 -4.2184 2.460e-05 ***
+age        -0.1069480  0.0176141 -6.0717 1.265e-09 ***
+education   0.0070203  0.0060165  1.1668    0.2433    
+youngkids  -0.2699201  0.0321591 -8.3933 < 2.2e-16 ***
+oldkids    -0.0046379  0.0154409 -0.3004    0.7639    
+foreignyes  0.2856119  0.0397184  7.1909 6.436e-13 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+dF/dx is for discrete change for the following variables:
+
+[1] "foreignyes"
+\end{CodeInput}
+\end{CodeChunk}
+Which leads to comparable results. Given that the response variable is binary, we can also calculate the odds ratios obtained after fitting a logit regression. The code below demonstrates this. 
+\begin{CodeChunk}
+\begin{CodeInput}
+R> (mod3 = logitor(participation ~ income + age + education +
++                   youngkids + oldkids + foreign, 
++                 data = SwissLabor))
+Call:
+logitor(formula = participation ~ income + age + education + 
+    youngkids + oldkids + foreign, data = SwissLabor)
+
+Odds Ratio:
+           OddsRatio Std. Err.       z     P>|z|    
+income      0.442621  0.090959 -3.9661 7.305e-05 ***
+age         0.600298  0.054338 -5.6379 1.721e-08 ***
+education   1.032237  0.029972  1.0927    0.2745    
+youngkids   0.264286  0.047616 -7.3859 1.514e-13 ***
+oldkids     0.978254  0.072162 -0.2980    0.7657    
+foreignyes  3.707675  0.740637  6.5600 5.382e-11 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+\end{CodeInput}
+\end{CodeChunk}
+The output for the odds ratios is as we would expect. The negative marginal effects have odds ratios below one, and the positive marginal effects, above one. The next \pkg{mfx} feature that is worth highlighting is the ability of the functions in the package to compute clustered standard errors. This functionality is displayed in the example below.
+\begin{CodeChunk}
+\begin{CodeInput}
+R> SwissLabor$id = 1:dim(SwissLabor)[1]
+R> SwissLabor3 = rbind(SwissLabor, SwissLabor, SwissLabor)
+R> (mod4 = probitmfx(participation ~ income + age + education +
++                     youngkids + oldkids + foreign, 
++                   data = SwissLabor3))
+Call:
+probitmfx(formula = participation ~ income + age + education + 
+    youngkids + oldkids + foreign, data = SwissLabor3)
+
+Marginal Effects:
+                dF/dx  Std. Err.        z     P>|z|    
+income     -0.1992314  0.0280393  -7.1054 1.199e-12 ***
+age        -0.1232260  0.0124103  -9.9293 < 2.2e-16 ***
+education   0.0080889  0.0040117   2.0163   0.04377 *  
+youngkids  -0.3110035  0.0236506 -13.1499 < 2.2e-16 ***
+oldkids    -0.0053438  0.0102732  -0.5202   0.60294    
+foreignyes  0.3112408  0.0247808  12.5598 < 2.2e-16 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+dF/dx is for discrete change for the following variables:
+
+[1] "foreignyes"
+R> (mod5 = probitmfx(participation ~ income + age + education +
++                     youngkids + oldkids + foreign, 
++                   data = SwissLabor3, clustervar1 = "id"))
+Call:
+probitmfx(formula = participation ~ income + age + education + 
+    youngkids + oldkids + foreign, data = SwissLabor3, clustervar1 = "id")
+
+Marginal Effects:
+                dF/dx  Std. Err.       z     P>|z|    
+income     -0.1992314  0.0453073 -4.3973 1.096e-05 ***
+age        -0.1232260  0.0210013 -5.8675 4.423e-09 ***
+education   0.0080889  0.0069325  1.1668    0.2433    
+youngkids  -0.3110035  0.0467831 -6.6478 2.976e-11 ***
+oldkids    -0.0053438  0.0174540 -0.3062    0.7595    
+foreignyes  0.3112408  0.0437153  7.1197 1.081e-12 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+dF/dx is for discrete change for the following variables:
+
+[1] "foreignyes"
+\end{CodeInput}
+\end{CodeChunk}
+In this example the data frame is duplicated twice and added to the existing data frame. Replicating the first \code{probitmfx} command on the enlarged data frame results in much lower standard errors. However, this can be corrected if we cluster the standard errors on the observation unit. As we can see this ``fixes'' the problem created by duplicating the data frame.
+
+The final part of this example analysis illustrates how the \pkg{mfx} objects estimated in the above can be used to create a table with \LaTeX. This involves coercing the \pkg{mfx} objects so that they are compatible with the \pkg{texreg} package. Since the \pkg{mfx} objects return the fitted \code{glm} object, we can use this as an input in the \code{texreg} function and override the model coefficients with the estimated marginal effect/odds ratios. Since the estimated \code{glm} models contain intercept values (and this will nearly always be the case) we take care to create some an additional value in our marginal effect/odds ratios and then remove this output using the \code{omit.coef} argument. Finally, some aesthetic alterations are made to the \code{texreg} object before saving the object. Table \ref{table:two} shows what the table looks like when compiled in \LaTeX. 
+
+\begin{CodeChunk}
+\begin{CodeInput}
+R> library("texreg")
+Version:  1.29.6
+Date:     2013-09-27
+Author:   Philip Leifeld (University of Konstanz)
+R> mods = list(mod1$fit, mod2$fit, mod3$fit, mod4$fit, mod5$fit)
+R> coefs = list(c(0, mod1$mfxest[, 1]), c(0, mod2$mfxest[, 1]),
++              c(0, mod3$oddsratio[, 1]), c(0, mod4$mfxest[, 1]),
++              c(0, mod5$mfxest[, 1]))
+R> ses = list(c(0, mod1$mfxest[, 2]), c(0, mod2$mfxest[, 2]),
++            c(0, mod3$oddsratio[, 2]), c(0, mod4$mfxest[, 2]),
++            c(0, mod5$mfxest[, 2]))
+R> pvals = list(c(0, mod1$mfxest[, 4]), c(0,mod2$mfxest [, 4]),
++              c(0, mod3$oddsratio[, 4]), c(0,mod4$mfxest [, 4]),
++              c(0, mod5$mfxest[, 4]))
+> 
+R> tr1 = texreg(mods,
++              override.coef = coefs,
++              override.se = ses,
++              override.pval = pvals,
++              omit.coef = "(Intercept)",
++              caption.above = TRUE,
++              caption = "Models Explaining Labor Participation. Marginal Effects
+                          and Odds Ratio Example",
++              dcolumn = TRUE,
++              custom.note = "\%stars.",
++              custom.model.names = c("(1)","(2)","(3)","(4)","(5)"),
++              return.string = TRUE)
+. . . output omitted . . .
+R> tr1 = unlist(strsplit(as.character(tr1), "\n"))
+R> tr1 = c(tr1[1:6],
++         "\\\\[-1.8ex]\\hline", "\\hline \\\\[-1.8ex]",
++         " & \\multicolumn{1}{c}{Probit MFX} 
++           & \\multicolumn{1}{c}{Probit MFX} 
++           & \\multicolumn{1}{c}{Logit OR}
++           & \\multicolumn{1}{c}{Probit MFX}
++           & \\multicolumn{1}{c}{Probit MFX} \\\\",
++         tr1[8:length(tr1)])
+> tr1[c(11, 24)] = "\\hline \\\\[-1.8ex]"
+> tr1[31:33] = gsub("textsuperscript", "\\\\textsuperscript", tr1[31:33])
+R> write(tr1, "table.tex")
+\end{CodeInput}
+\end{CodeChunk}
+
+\begin{table}
+\begin{center}
+\begin{tabular}{l D{.}{.}{4.5}@{} D{.}{.}{4.5}@{} D{.}{.}{4.5}@{} D{.}{.}{5.5}@{} D{.}{.}{5.5}@{} }
+\\[-1.8ex]\hline
+\hline \\[-1.8ex]
+ & \multicolumn{1}{c}{Probit MFX} 
+          & \multicolumn{1}{c}{Probit MFX} 
+          & \multicolumn{1}{c}{Logit OR}
+          & \multicolumn{1}{c}{Probit MFX}
+          & \multicolumn{1}{c}{Probit MFX} \\
+               & \multicolumn{1}{c}{(1)} & \multicolumn{1}{c}{(2)} & \multicolumn{1}{c}{(3)} & \multicolumn{1}{c}{(4)} & \multicolumn{1}{c}{(5)} \\
+\hline \\[-1.8ex]
+income         & -0.20^{***} & -0.17^{***} & 0.44^{***} & -0.20^{***} & -0.20^{***} \\
+               & (0.05)      & (0.04)      & (0.09)     & (0.03)      & (0.05)      \\
+age            & -0.12^{***} & -0.11^{***} & 0.60^{***} & -0.12^{***} & -0.12^{***} \\
+               & (0.02)      & (0.02)      & (0.05)     & (0.01)      & (0.02)      \\
+education      & 0.01        & 0.01        & 1.03       & 0.01^{*}    & 0.01        \\
+               & (0.01)      & (0.01)      & (0.03)     & (0.00)      & (0.01)      \\
+youngkids      & -0.31^{***} & -0.27^{***} & 0.26^{***} & -0.31^{***} & -0.31^{***} \\
+               & (0.04)      & (0.03)      & (0.05)     & (0.02)      & (0.05)      \\
+oldkids        & -0.01       & 0.00        & 0.98       & -0.01       & -0.01       \\
+               & (0.02)      & (0.02)      & (0.07)     & (0.01)      & (0.02)      \\
+foreignyes     & 0.31^{***}  & 0.29^{***}  & 3.71^{***} & 0.31^{***}  & 0.31^{***}  \\
+               & (0.04)      & (0.04)      & (0.74)     & (0.02)      & (0.04)      \\
+\hline \\[-1.8ex]
+AIC            & 1066.98     & 1066.98     & 1066.80    & 3172.95     & 3172.95     \\
+BIC            & 1100.38     & 1100.38     & 1100.19    & 3214.03     & 3214.03     \\
+Log Likelihood & -526.49     & -526.49     & -526.40    & -1579.47    & -1579.47    \\
+Deviance       & 1052.98     & 1052.98     & 1052.80    & 3158.95     & 3158.95     \\
+Num. obs.      & 872         & 872         & 872        & 2616        & 2616        \\
+\hline
+\multicolumn{6}{l}{\scriptsize{\textsuperscript{***}$p<0.001$, 
+  \textsuperscript{**}$p<0.01$, 
+  \textsuperscript{*}$p<0.05$.}}
+\end{tabular}
+\caption{Models explaining labor force participation, marginal effects and odds ratio example.}
+\label{table:two}
+\end{center}
+\end{table}
+
+\section[Summary]{Summary}
+
+This article introduces the \pkg{mfx} package for \proglang{R}. The package hosts a number of useful functions that should be of interest to those who conduct empirical research. Similarities between the functions provided in \pkg{mfx} and the well-known \code{glm} function mean that using \pkg{mfx} should be trivial for existing \proglang{R} users. There are a number of areas upon which the package could be improved. One such area would be to extend the number of models available. Examples of models that could be added include: ordered probit, multinomial logit, heteroskedastic probit, and instrumental variables probit. Another area for future expansion would be to improve the manner in which \pkg{mfx} handles nonlinear and interaction terms. For example, the current version of \pkg{mfx} calculates the marginal effect for each regressor separately, even if the same variable is included twice---albeit in two different forms, e.g., as a linear value and it's squared term. In instances like this, it may be preferable to have one marginal effect for each unique regressor and therefore \pkg{mfx} users should exercise caution before interpreting such values.
+
+\bibliography{mfxarticle}
+
+
+\end{document}
