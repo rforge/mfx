@@ -1,7 +1,12 @@
+Changes in Version 1.2-0  (2019-02-05)
+
+  o Added a 'vignette' (Marginal Effects for Generalized Linear Models:
+    The mfx Package for R)
+  o Fixed some 'NAMESOPACE' issues
+  o Added test scripts and corresponding output files
+
+
 Changes in Version 1.1
 
   o Functions added for calculating odds ratios and incidence rate ratios.
   o Package now includes beta regressions from the betareg package.
-
-  
-  
