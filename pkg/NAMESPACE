@@ -1,6 +1,14 @@
 #exportPattern("^[[:alpha:]]+")
-export(logitmfx, negbinmfx, poissonmfx, probitmfx, betamfx, 
-       print.logitmfx, print.negbinmfx, print.poissonmfx, print.probitmfx, print.betamfx,
-	   logitor, negbinirr, poissonirr, betaor,
-	   print.logitor, print.negbinirr, print.poissonirr, print.betaor)
+export(logitmfx, negbinmfx, poissonmfx, probitmfx, betamfx,
+	   logitor, negbinirr, poissonirr, betaor )
 import(stats, sandwich, lmtest, MASS, betareg)
+
+S3method( "print", "betamfx" )
+S3method( "print", "betaor" )
+S3method( "print", "logitmfx" )
+S3method( "print", "logitor" )
+S3method( "print", "negbinirr" )
+S3method( "print", "negbinmfx" )
+S3method( "print", "poissonirr" )
+S3method( "print", "poissonmfx" )
+S3method( "print", "probitmfx" )
