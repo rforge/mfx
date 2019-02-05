@@ -1,0 +1,7 @@
+Changes in Version 1.1
+
+  o Functions added for calculating odds ratios and incidence rate ratios.
+  o Package now includes beta regressions from the betareg package.
+
+  
+  
