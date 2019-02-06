@@ -1,9 +1,10 @@
-Changes in Version 1.2-0  (2019-02-05)
+Changes in Version 1.2-2  (2019-02-06)
 
   o Added a 'vignette' (Marginal Effects for Generalized Linear Models:
     The mfx Package for R)
   o Fixed some 'NAMESOPACE' issues
   o Added test scripts and corresponding output files
+  o Improved the description of the package
 
 
 Changes in Version 1.1
