@@ -7,6 +7,8 @@ Authors@R: c( person( "Alan", "Fernihough", role = c("aut", "cre"),
                 email = "alan.fernihough@gmail.com" ),
               person( "Arne", "Henningsen", role = "ctb",
                 email = "arne.henningsen@gmail.com" ) )
-Description: Estimates probit, logit, Poisson, negative binomial, and beta regression models, returning their marginal effects, odds ratios, or incidence rate ratios as an output.
+Description: Estimates probit, logit, Poisson, negative binomial, 
+  and beta regression models, returning their marginal effects, odds ratios, 
+  or incidence rate ratios as an output.
 License: GPL-2 | GPL-3
 Depends: stats, sandwich, lmtest, MASS, betareg
